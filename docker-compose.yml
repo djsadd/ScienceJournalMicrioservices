@@ -1,0 +1,158 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./docker/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+
+  auth:
+    build: ./Auth - Identity Service
+    environment:
+      - DATABASE_URL=postgresql://auth:pass@db/auth
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  users:
+    build: ./User Profile Service
+    environment:
+      - DATABASE_URL=postgresql://users:pass@db/users
+      - AUTH_SERVICE_URL=http://auth:8000
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8002:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+
+  articles:
+    build: ./Article Management Service
+    environment:
+      - DATABASE_URL=postgresql://articles:pass@db/articles
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8003:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  reviews:
+    build: ./Review Service
+    environment:
+      - DATABASE_URL=postgresql://reviews:pass@db/reviews
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+      - ARTICLE_SERVICE_URL=http://articles:8000
+    ports:
+      - "8004:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+
+  editorial:
+    build: ./Editorial Workflow Service
+    environment:
+      - DATABASE_URL=postgresql://editorial:pass@db/editorial
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8005:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+
+  layout:
+    build: ./Layout Service
+    environment:
+      - FILE_SERVICE_URL=http://fileprocessing:7000
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8006:8000"
+    depends_on:
+      - auth
+      - fileprocessing
+
+  publication:
+    build: ./Publication Service
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8007:8000"
+    depends_on:
+      - auth
+
+  notifications:
+    build: ./Notification Service
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8008:8000"
+    depends_on:
+      - auth
+
+  analytics:
+    build: ./Analytics - Metrics Service
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8009:8000"
+    depends_on:
+      - auth
+
+  fileprocessing:
+    build: ./FileStorageService
+    volumes:
+      - storage_data:/app/storage
+    ports:
+      - "7000:7000"
+
+  api-gateway:
+    build: ./API Gateaway
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth
+      - users
+      - articles
+      - reviews
+      - editorial
+      - layout
+      - publication
+      - notifications
+      - analytics
+      - fileprocessing
+
+  search:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+    ports:
+      - "9200:9200"
+
+
+volumes:
+  db_data:
+  storage_data:
