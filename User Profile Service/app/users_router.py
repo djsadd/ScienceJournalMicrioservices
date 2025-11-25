@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
 from app import models, schemas, database, security
 import httpx
@@ -12,8 +12,34 @@ def get_db():
     finally:
         db.close()
 
-async def get_current_user(authorization: str = Header(...)):
-    token = authorization.replace("Bearer ", "")
+async def get_current_user(request: Request, authorization: str = Header(None)):
+    """Resolve current user using data forwarded by API gateway.
+
+    Gateway is expected to validate JWT and pass X-User-Id / X-User-Roles headers.
+    For direct calls (e.g. local testing), fall back to JWT decoding from Authorization.
+    """
+    # Preferred path: trust identity forwarded by API gateway
+    forwarded_user_id = request.headers.get("X-User-Id")
+    if forwarded_user_id:
+        roles_header = request.headers.get("X-User-Roles", "")
+        roles = [r for r in roles_header.split(",") if r] if roles_header else []
+        try:
+            return {"user_id": int(forwarded_user_id), "roles": roles}
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid forwarded user id")
+
+    # Fallback: decode JWT locally for direct access (non-gateway)
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    parts = authorization.split()
+    if len(parts) != 2:
+        raise HTTPException(status_code=401, detail="Invalid authorization header format")
+
+    scheme, token = parts
+    if scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization scheme")
+
     from app.config import SECRET_KEY, ALGORITHM
     from jose import jwt, JWTError
 

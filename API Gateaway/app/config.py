@@ -1,3 +1,11 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load shared .env from project root so SECRET_KEY is consistent
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env")
+
 SERVICE_URLS = {
     "auth": "http://auth:8000",
     "users": "http://users:8000",
@@ -8,5 +16,8 @@ SERVICE_URLS = {
     "publication": "http://publication:8000",
     "notifications": "http://notifications:8000",
     "analytics": "http://analytics:8000",
-    "fileprocessing": "http://fileprocessing:7000",
+    "files": "http://fileprocessing:7000",
 }
+
+SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
+ALGORITHM = "HS256"

@@ -92,6 +92,29 @@ class ArticleCreate(BaseModel):
     authors: List[AuthorCreate] = Field(default_factory=list)
 
 
+class ArticleCreateWithIds(BaseModel):
+    title_kz: str
+    title_en: str
+    title_ru: str
+    abstract_kz: Optional[str] = None
+    abstract_en: Optional[str] = None
+    abstract_ru: Optional[str] = None
+    doi: Optional[str] = None
+    status: ArticleStatus = ArticleStatus.draft
+    article_type: ArticleType = ArticleType.original
+    responsible_user_id: int
+    antiplagiarism_file_id: Optional[str] = None
+    not_published_elsewhere: bool = False
+    plagiarism_free: bool = False
+    authors_agree: bool = False
+    generative_ai_info: Optional[str] = None
+    manuscript_file_id: Optional[str] = None
+    author_info_file_id: Optional[str] = None
+    cover_letter_file_id: Optional[str] = None
+    keyword_ids: List[int] = Field(default_factory=list)
+    author_ids: List[int] = Field(default_factory=list)
+
+
 class ArticleOut(BaseModel):
     id: int
     title_kz: str

@@ -104,6 +104,7 @@ services:
   notifications:
     build: ./Notification Service
     environment:
+      - DATABASE_URL=postgresql://notifications:pass@db/notifications
       - SECRET_KEY=${SECRET_KEY:-supersecretkey}
     ports:
       - "8008:8000"
@@ -121,10 +122,15 @@ services:
 
   fileprocessing:
     build: ./FileStorageService
+    environment:
+      - DATABASE_URL=postgresql://fileprocessing:pass@db/fileprocessing
     volumes:
       - storage_data:/app/storage
     ports:
       - "7000:7000"
+    depends_on:
+      db:
+        condition: service_healthy
 
   api-gateway:
     build: ./API Gateaway

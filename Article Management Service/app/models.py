@@ -100,7 +100,12 @@ class Article(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     current_version_id = Column(Integer, ForeignKey("article_versions.id"), nullable=True)
 
-    versions = relationship("ArticleVersion", back_populates="article")
+    # Explicit foreign_keys to avoid ambiguity with current_version_id
+    versions = relationship(
+        "ArticleVersion",
+        back_populates="article",
+        foreign_keys="ArticleVersion.article_id",
+    )
     authors = relationship("Author", secondary=article_authors, back_populates="articles")
     keywords = relationship("Keyword", secondary=article_keywords, back_populates="articles")
 
@@ -115,4 +120,9 @@ class ArticleVersion(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_published = Column(Boolean, default=False)
 
-    article = relationship("Article", back_populates="versions")
+    # Explicit foreign_keys to disambiguate relationship
+    article = relationship(
+        "Article",
+        back_populates="versions",
+        foreign_keys=[article_id],
+    )

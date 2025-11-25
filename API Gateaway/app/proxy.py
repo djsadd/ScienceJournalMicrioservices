@@ -23,13 +23,25 @@ def _filter_headers(headers) -> dict:
 
 
 async def proxy_request(service_url: str, request: Request) -> Response:
+    # Start with client headers minus hop-by-hop ones
+    headers = dict(_filter_headers(request.headers))
+
+    # If auth middleware/dependency resolved user, forward minimal identity
+    user_id = getattr(request.state, "user_id", None)
+    roles = getattr(request.state, "roles", None)
+    if user_id is not None:
+        headers["X-User-Id"] = str(user_id)
+    if roles is not None:
+        # Forward roles as a simple comma-separated list
+        headers["X-User-Roles"] = ",".join(roles)
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.request(
             method=request.method,
             url=service_url + request.url.path,
             params=request.query_params,
             content=await request.body(),
-            headers=_filter_headers(request.headers),
+            headers=headers,
             follow_redirects=False,
         )
 

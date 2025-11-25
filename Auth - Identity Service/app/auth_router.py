@@ -58,6 +58,7 @@ def login(form_data: schemas.UserCreate, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user or not security.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    access_token = security.create_access_token({"sub": user.id, "roles": [user.role]})
-    refresh_token = security.create_refresh_token({"sub": user.id})
+    # JWT spec expects `sub` to be a string; cast user.id accordingly
+    access_token = security.create_access_token({"sub": str(user.id), "roles": [user.role]})
+    refresh_token = security.create_refresh_token({"sub": str(user.id)})
     return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
