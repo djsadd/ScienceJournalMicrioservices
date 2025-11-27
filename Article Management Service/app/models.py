@@ -33,6 +33,7 @@ class ArticleStatus(str, enum.Enum):
     under_review = "under_review"
     accepted = "accepted"
     published = "published"
+    withdrawn = "withdrawn"
 
 
 class ArticleType(str, enum.Enum):
@@ -116,6 +117,7 @@ class ArticleVersion(Base):
     id = Column(Integer, primary_key=True, index=True)
     article_id = Column(Integer, ForeignKey("articles.id"))
     version_number = Column(Integer, nullable=False)
+    version_code = Column(String, nullable=True)
     file_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_published = Column(Boolean, default=False)

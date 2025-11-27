@@ -10,6 +10,7 @@ class ArticleStatus(str, Enum):
     under_review = "under_review"
     accepted = "accepted"
     published = "published"
+    withdrawn = "withdrawn"
 
 
 class ArticleType(str, Enum):
@@ -62,6 +63,7 @@ class ArticleVersionBase(BaseModel):
 
 class ArticleVersionOut(ArticleVersionBase):
     id: int
+    version_code: Optional[str] = None
     created_at: datetime
     is_published: bool
 
@@ -113,6 +115,27 @@ class ArticleCreateWithIds(BaseModel):
     cover_letter_file_id: Optional[str] = None
     keyword_ids: List[int] = Field(default_factory=list)
     author_ids: List[int] = Field(default_factory=list)
+
+
+class ArticleUpdate(BaseModel):
+    title_kz: Optional[str] = None
+    title_en: Optional[str] = None
+    title_ru: Optional[str] = None
+    abstract_kz: Optional[str] = None
+    abstract_en: Optional[str] = None
+    abstract_ru: Optional[str] = None
+    doi: Optional[str] = None
+    article_type: Optional[ArticleType] = None
+    antiplagiarism_file_id: Optional[str] = None
+    not_published_elsewhere: Optional[bool] = None
+    plagiarism_free: Optional[bool] = None
+    authors_agree: Optional[bool] = None
+    generative_ai_info: Optional[str] = None
+    manuscript_file_id: Optional[str] = None
+    author_info_file_id: Optional[str] = None
+    cover_letter_file_id: Optional[str] = None
+    keyword_ids: Optional[List[int]] = None
+    author_ids: Optional[List[int]] = None
 
 
 class ArticleOut(BaseModel):
