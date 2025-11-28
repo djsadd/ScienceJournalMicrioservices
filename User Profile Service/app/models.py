@@ -1,10 +1,16 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, ARRAY
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
 from app.database import Base
-
+import enum
 
 roles = ["author", "reviewer", "editor", "layout"]
 
+
+class Language(str, enum.Enum):
+    kz = "kz"
+    ru = "ru"
+    en = "en"
 
 
 class UserProfile(Base):
@@ -16,6 +22,8 @@ class UserProfile(Base):
     phone = Column(String, nullable=True)
     organization = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    # Предпочтительный язык пользователя (для подбора рецензентов / локализации)
+    preferred_language = Column(String, nullable=False, default=Language.en.value)
 
     # связи
     articles = relationship("ArticleLink", back_populates="user")

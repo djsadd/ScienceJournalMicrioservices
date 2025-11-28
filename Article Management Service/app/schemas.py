@@ -61,11 +61,43 @@ class ArticleVersionBase(BaseModel):
     version_number: int
 
 
-class ArticleVersionOut(ArticleVersionBase):
+class ArticleVersionOut(BaseModel):
     id: int
+    article_id: int
+    version_number: int
     version_code: Optional[str] = None
+    
+    # Полный снимок статьи
+    title_kz: str
+    title_en: str
+    title_ru: str
+    abstract_kz: Optional[str] = None
+    abstract_en: Optional[str] = None
+    abstract_ru: Optional[str] = None
+    doi: Optional[str] = None
+    article_type: ArticleType
+    
+    # Файлы
+    manuscript_file_url: Optional[str] = None
+    antiplagiarism_file_url: Optional[str] = None
+    author_info_file_url: Optional[str] = None
+    cover_letter_file_url: Optional[str] = None
+    
+    # Дополнительная информация
+    not_published_elsewhere: bool
+    plagiarism_free: bool
+    authors_agree: bool
+    generative_ai_info: Optional[str] = None
+    
+    # Legacy поле для обратной совместимости
+    file_url: Optional[str] = None
+    
     created_at: datetime
     is_published: bool
+    
+    # Авторы и ключевые слова на момент создания версии
+    authors: List[AuthorOut] = Field(default_factory=list)
+    keywords: List[KeywordOut] = Field(default_factory=list)
 
     class Config:
         orm_mode = True
@@ -166,3 +198,8 @@ class ArticleOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class AssignReviewerRequest(BaseModel):
+    reviewer_ids: List[int] = Field(..., min_items=1, description="List of reviewer user IDs to assign")
+    deadline: Optional[datetime] = None

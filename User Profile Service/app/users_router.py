@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
 from app import models, schemas, database, security
+from app import config
 import httpx
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -66,18 +67,99 @@ def create_profile(profile: schemas.UserProfileCreate, db: Session = Depends(get
     return new_profile
 
 
-@router.get("/{user_id}", response_model=schemas.UserProfileOut)
-def get_profile(user_id: int, db: Session = Depends(get_db)):
-    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == user_id).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-    return profile
-
-
 @router.get("/me/roles", response_model=schemas.UserRolesOut)
 async def get_user_roles(current=Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = current["user_id"]
     profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == user_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return {"user_id": user_id, "roles": profile.roles or []}
+    return {"user_id": user_id, "roles": profile.roles or [], "preferred_language": profile.preferred_language}
+
+
+@router.patch("/me/language", response_model=schemas.UserProfileOut)
+async def update_language(preferred_language: schemas.Language, current=Depends(get_current_user), db: Session = Depends(get_db)):
+    user_id = current["user_id"]
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == user_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    profile.preferred_language = preferred_language.value
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+@router.get("/reviewers", response_model=list[schemas.ReviewerFullInfo])
+def get_reviewers(
+    db: Session = Depends(get_db),
+    language: str | None = None,
+    current=Depends(get_current_user),
+):
+    """
+    Получить список всех рецензентов (пользователей с ролью 'reviewer').
+    Возвращает полную информацию, обогащённую данными из Auth-сервиса.
+    Опциональная фильтрация по предпочитаемому языку.
+    Доступно только для роли 'editor'.
+    """
+    # Проверка роли
+    roles = current.get("roles", [])
+    if "editor" not in roles:
+        raise HTTPException(status_code=403, detail="Editor role required")
+
+    query = db.query(models.UserProfile).filter(
+        models.UserProfile.roles.contains(["reviewer"]) 
+    )
+
+    if language:
+        query = query.filter(models.UserProfile.preferred_language == language)
+
+    reviewers = query.all()
+
+    enriched: list[dict] = []
+    with httpx.Client(timeout=5.0) as client:
+        for reviewer in reviewers:
+            item = {
+                "id": reviewer.id,
+                "user_id": reviewer.user_id,
+                "full_name": reviewer.full_name,
+                "phone": reviewer.phone,
+                "organization": reviewer.organization,
+                "roles": reviewer.roles or [],
+                "preferred_language": reviewer.preferred_language,
+                "is_active": reviewer.is_active,
+                # defaults for auth data
+                "username": None,
+                "email": None,
+                "first_name": None,
+                "last_name": None,
+                "institution": None,
+            }
+            try:
+                auth_resp = client.get(f"{config.AUTH_SERVICE_URL}/auth/users/{reviewer.user_id}")
+                if auth_resp.status_code == 200:
+                    auth_data = auth_resp.json()
+                    item.update({
+                        "username": auth_data.get("username"),
+                        "email": auth_data.get("email"),
+                        "first_name": auth_data.get("first_name"),
+                        "last_name": auth_data.get("last_name"),
+                        "institution": auth_data.get("institution"),
+                        # prefer is_active from auth if present
+                        "is_active": auth_data.get("is_active", item["is_active"]),
+                    })
+                    # если в профиле нет organization, возьмём из auth
+                    if not item.get("organization") and auth_data.get("organization"):
+                        item["organization"] = auth_data.get("organization")
+            except Exception:
+                # fail-soft: отдаём профиль без auth-данных
+                pass
+            enriched.append(item)
+
+    return enriched
+
+
+@router.get("/{user_id}", response_model=schemas.UserProfileOut)
+def get_profile(user_id: int, db: Session = Depends(get_db)):
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == user_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile
