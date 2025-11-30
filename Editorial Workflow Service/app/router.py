@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 from app import config, database, models, schemas
+import httpx
 
 router = APIRouter(prefix="/editorial", tags=["editorial"])
 
@@ -46,6 +47,16 @@ def create_task(task: schemas.EditorialTaskCreate, db: Session = Depends(get_db)
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
+    # Update assigned editor in Article Management Service
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            client.patch(
+                f"{config.ARTICLE_SERVICE_URL}/articles/internal/{new_task.article_id}/assigned-editor",
+                json={"editor_id": new_task.editor_id},
+                headers={"X-Service-Secret": config.SHARED_SERVICE_SECRET},
+            )
+    except Exception:
+        pass
     return new_task
 
 
@@ -85,4 +96,35 @@ def update_task(task_id: int, payload: schemas.EditorialTaskUpdate, db: Session 
 
     db.commit()
     db.refresh(task)
+    return task
+
+
+@router.patch("/{task_id}/reassign", response_model=schemas.EditorialTaskOut)
+def reassign_task_editor(
+    task_id: int,
+    payload: schemas.ReassignEditorRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Reassign task to another editor and update Article assigned editor accordingly."""
+    ensure_editor(current_user)
+    task = db.query(models.EditorialTask).filter(models.EditorialTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.editor_id = payload.new_editor_id
+    db.commit()
+    db.refresh(task)
+
+    # Propagate to Article Management Service
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            client.patch(
+                f"{config.ARTICLE_SERVICE_URL}/articles/internal/{task.article_id}/assigned-editor",
+                json={"editor_id": task.editor_id},
+                headers={"X-Service-Secret": config.SHARED_SERVICE_SECRET},
+            )
+    except Exception:
+        pass
+
     return task

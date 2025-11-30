@@ -11,6 +11,7 @@ from app.routers import (
     notifications,
     analytics,
     fileprocessing,
+    volumes,
 )
 
 app = FastAPI(title="API Gateway")
@@ -33,3 +34,4 @@ app.include_router(publication.router)
 app.include_router(notifications.router)
 app.include_router(analytics.router)
 app.include_router(fileprocessing.router)
+app.include_router(volumes.router)

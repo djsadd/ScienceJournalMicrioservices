@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.articles_router import router as articles_router
+from app.volumes_router import router as volumes_router
 from app.database import Base, engine
 from app import models  # register models for metadata
 from alembic.config import Config
@@ -25,3 +26,4 @@ def run_migrations():
 run_migrations()
 
 app.include_router(articles_router)
+app.include_router(volumes_router)

@@ -288,6 +288,7 @@ curl -X GET "http://localhost:8000/users/reviewers?language=ru" \
 - `pending` - Ожидает начала рецензирования
 - `in_progress` - В процессе рецензирования
 - `completed` - Рецензирование завершено
+- `resubmission` - Редактор запросил повторную рецензию (возврат на доработку)
 
 ### Recommendation (Enum)
 - `accept` - Принять без изменений

@@ -39,6 +39,23 @@ def _ensure_schema():
 			conn.execute(text("ALTER TABLE reviews " + ", ".join(alters)))
 			conn.commit()
 
+	# Ensure enum value 'resubmission' exists in PostgreSQL type reviewstatus
+	try:
+		with engine.connect() as conn:
+			existing = conn.execute(text("""
+				SELECT e.enumlabel
+				FROM pg_type t
+				JOIN pg_enum e ON t.oid = e.enumtypid
+				WHERE t.typname = 'reviewstatus'
+			""")).fetchall()
+			labels = {row[0] for row in existing}
+			if 'resubmission' not in labels:
+				conn.execute(text("ALTER TYPE reviewstatus ADD VALUE IF NOT EXISTS 'resubmission'"))
+				conn.commit()
+	except Exception:
+		# Silent ignore; if fails, service will still run but endpoint will error until manual migration
+		pass
+
 
 _ensure_schema()
 

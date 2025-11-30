@@ -8,7 +8,11 @@ class ArticleStatus(str, Enum):
     draft = "draft"
     submitted = "submitted"
     under_review = "under_review"
+    editor_check = "editor_check"
+    reviewer_check = "reviewer_check"
+    sent_for_revision = "sent_for_revision"
     accepted = "accepted"
+    rejected = "rejected"
     published = "published"
     withdrawn = "withdrawn"
 
@@ -182,6 +186,7 @@ class ArticleOut(BaseModel):
     status: ArticleStatus
     article_type: ArticleType
     responsible_user_id: int
+    assigned_editor_id: int | None = None
     antiplagiarism_file_url: Optional[str] = None
     not_published_elsewhere: bool
     plagiarism_free: bool
@@ -200,6 +205,50 @@ class ArticleOut(BaseModel):
         orm_mode = True
 
 
+class AssignedEditorUpdate(BaseModel):
+    editor_id: int | None = None
+
+
 class AssignReviewerRequest(BaseModel):
     reviewer_ids: List[int] = Field(..., min_items=1, description="List of reviewer user IDs to assign")
     deadline: Optional[datetime] = None
+
+
+class ArticleStatusUpdate(BaseModel):
+    status: ArticleStatus
+
+
+class VolumeBase(BaseModel):
+    year: int
+    number: int
+    month: int | None = Field(default=None, ge=1, le=12, description="Month number 1-12")
+    title_kz: str | None = None
+    title_en: str | None = None
+    title_ru: str | None = None
+    description: str | None = None
+    is_active: bool = True
+
+
+class VolumeCreate(VolumeBase):
+    article_ids: List[int] = Field(default_factory=list, description="IDs of published articles to include")
+
+
+class VolumeUpdate(BaseModel):
+    year: int | None = None
+    number: int | None = None
+    month: int | None = Field(default=None, ge=1, le=12)
+    title_kz: str | None = None
+    title_en: str | None = None
+    title_ru: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+    article_ids: List[int] | None = Field(default=None, description="Override list of article IDs in volume")
+
+
+class VolumeOut(VolumeBase):
+    id: int
+    published_at: datetime
+    articles: List[ArticleOut] = Field(default_factory=list)
+
+    class Config:
+        orm_mode = True

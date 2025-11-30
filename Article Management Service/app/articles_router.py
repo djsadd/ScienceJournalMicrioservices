@@ -48,6 +48,11 @@ def ensure_editor(user):
         raise HTTPException(status_code=403, detail="Editor role required")
 
 
+def ensure_service_secret(x_service_secret: str | None):
+    if not x_service_secret or x_service_secret != getattr(config, "SHARED_SERVICE_SECRET", ""):
+        raise HTTPException(status_code=403, detail="Invalid service secret")
+
+
 def _create_article_version_snapshot(db: Session, article: models.Article, version_number: int, version_code: str) -> models.ArticleVersion:
     """
     Создает полный снимок статьи в виде версии.
@@ -148,7 +153,7 @@ def list_unassigned_articles(
     page_size: int = 10,
 ):
     """
-    Список неназначенных статей для редактора с фильтрацией и пагинацией.
+    Список статей для редактора с фильтрацией и пагинацией.
     
     Параметры фильтрации:
     - status: Статус статьи (submitted, under_review, accepted, published, withdrawn, draft)
@@ -180,12 +185,16 @@ def list_unassigned_articles(
     )
     
     # Фильтр по статусу (по умолчанию только submitted)
+    # Особый кейс: если status == "all", не фильтруем по статусу.
     if status:
-        try:
-            status_enum = models.ArticleStatus(status)
-            query = query.filter(models.Article.status == status_enum)
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+        if status.lower() == "all":
+            pass
+        else:
+            try:
+                status_enum = models.ArticleStatus(status)
+                query = query.filter(models.Article.status == status_enum)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
     else:
         # По умолчанию показываем только submitted статьи
         query = query.filter(models.Article.status == models.ArticleStatus.submitted)
@@ -239,6 +248,9 @@ def list_unassigned_articles(
         )
         query = query.filter(search_filter)
     
+    # Убран фильтр назначенности редактору по полю assigned_editor_id.
+    # Эндпоинт больше не ограничивает результаты по назначению редактора.
+
     # Подсчет общего количества записей
     total_count = query.distinct().count()
     
@@ -301,6 +313,38 @@ def get_article_detail_for_editor(
     return article
 
 
+@router.get("/editor/{article_id}/versions/{version_id}", response_model=schemas.ArticleVersionOut)
+def get_article_version_detail_for_editor(
+    article_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Детальная страница версии рукописи для редактора.
+    Поведение аналогично основной статье: доступ только для роли 'editor'.
+    Возвращает полную информацию о версии, включая авторов и ключевые слова.
+    """
+    ensure_editor(current_user)
+    from sqlalchemy.orm import joinedload
+    version = (
+        db.query(models.ArticleVersion)
+        .options(
+            joinedload(models.ArticleVersion.authors),
+            joinedload(models.ArticleVersion.keywords),
+            joinedload(models.ArticleVersion.article),
+        )
+        .filter(
+            models.ArticleVersion.id == version_id,
+            models.ArticleVersion.article_id == article_id,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(status_code=404, detail="Article version not found")
+    return version
+
+
 @router.get("/my/{article_id}", response_model=schemas.ArticleOut)
 def get_article_detail(
     article_id: int,
@@ -327,6 +371,48 @@ def get_article_detail(
     if article.responsible_user_id != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="You are not the responsible user for this article")
     return article
+
+
+@router.get("/my/{article_id}/versions/{version_id}", response_model=schemas.ArticleVersionOut)
+def get_article_version_detail(
+    article_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Детальная страница версии статьи для автора.
+    Доступна только ответственному пользователю (responsible_user_id) статьи.
+    """
+    # Проверяем, что версия принадлежит указанной статье
+    from sqlalchemy.orm import joinedload
+    version = (
+        db.query(models.ArticleVersion)
+        .options(
+            joinedload(models.ArticleVersion.authors),
+            joinedload(models.ArticleVersion.keywords),
+            joinedload(models.ArticleVersion.article),
+        )
+        .filter(
+            models.ArticleVersion.id == version_id,
+            models.ArticleVersion.article_id == article_id,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(status_code=404, detail="Article version not found")
+
+    # Проверяем право доступа автора на статью
+    article = version.article
+    if not article:
+        # Fallback на случай отсутствия relationship
+        article = db.query(models.Article).filter(models.Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if article.responsible_user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="You are not the responsible user for this article")
+
+    return version
 
 
 @router.get("/my/{article_id}/file")
@@ -564,6 +650,27 @@ def create_article(article: schemas.ArticleCreateWithIds, db: Session = Depends(
     return new_article
 
 
+@router.patch("/internal/{article_id}/assigned-editor")
+def set_assigned_editor_internal(
+    article_id: int,
+    payload: schemas.AssignedEditorUpdate,
+    db: Session = Depends(get_db),
+    x_service_secret: str | None = Header(default=None, alias="X-Service-Secret"),
+):
+    """
+    Internal: set or clear assigned editor for an article.
+    Requires X-Service-Secret header.
+    """
+    ensure_service_secret(x_service_secret)
+    article = db.query(models.Article).filter(models.Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    article.assigned_editor_id = payload.editor_id if payload else None
+    db.commit()
+    db.refresh(article)
+    return {"id": article.id, "assigned_editor_id": article.assigned_editor_id}
+
+
 @router.post("/by_ids", response_model=schemas.ArticleOut)
 def create_article_by_ids(
     article: schemas.ArticleCreateWithIds,
@@ -777,12 +884,41 @@ def add_version(article_id: int, version: schemas.ArticleVersionBase, db: Sessio
 
 
 @router.patch("/{article_id}/status")
-def change_status(article_id: int, status: schemas.ArticleStatus, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def change_status(
+    article_id: int,
+    payload: schemas.ArticleStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Смена статуса статьи (принимает JSON тело: {"status": "..."}). Только для роли editor."""
     ensure_editor(current_user)
     article = db.query(models.Article).filter(models.Article.id == article_id).first()
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
-    article.status = status
+    article.status = payload.status
+    # Если редактор переводит статью в статус проверки редактором, закрепим редактора за статьей
+    if payload.status == models.ArticleStatus.editor_check:
+        article.assigned_editor_id = int(current_user["user_id"])
+    db.commit()
+    db.refresh(article)
+    return {"id": article.id, "status": article.status}
+
+
+@router.patch("/internal/{article_id}/review-submitted")
+def mark_review_submitted_internal(
+    article_id: int,
+    db: Session = Depends(get_db),
+    x_service_secret: str | None = Header(default=None, alias="X-Service-Secret"),
+):
+    """
+    Внутренний эндпоинт для Review Service: когда рецензент отправляет рецензию,
+    переводим статью в статус проверки у редактора.
+    """
+    ensure_service_secret(x_service_secret)
+    article = db.query(models.Article).filter(models.Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    article.status = models.ArticleStatus.editor_check
     db.commit()
     db.refresh(article)
     return {"id": article.id, "status": article.status}
@@ -825,6 +961,14 @@ async def assign_reviewers(
             )
     
     db.commit()
+    
+    # Переводим статью в статус проверки у рецензента
+    try:
+        article.status = models.ArticleStatus.reviewer_check
+        db.commit()
+        db.refresh(article)
+    except Exception:
+        db.rollback()
     
     # Отправляем запрос в Review Service для создания Review записей
     review_service_url = config.REVIEW_SERVICE_URL if hasattr(config, 'REVIEW_SERVICE_URL') else "http://reviews:8000"

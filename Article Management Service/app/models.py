@@ -41,12 +41,24 @@ article_version_keywords = Table(
     Column("keyword_id", Integer, ForeignKey("keywords.id"), primary_key=True),
 )
 
+# Association table for volumes and articles
+volume_articles = Table(
+    "volume_articles",
+    Base.metadata,
+    Column("volume_id", Integer, ForeignKey("volumes.id"), primary_key=True),
+    Column("article_id", Integer, ForeignKey("articles.id"), primary_key=True),
+)
+
 
 class ArticleStatus(str, enum.Enum):
     draft = "draft"
     submitted = "submitted"
     under_review = "under_review"
+    editor_check = "editor_check"
+    reviewer_check = "reviewer_check"
+    sent_for_revision = "sent_for_revision"
     accepted = "accepted"
+    rejected = "rejected"
     published = "published"
     withdrawn = "withdrawn"
 
@@ -104,6 +116,7 @@ class Article(Base):
     status = Column(Enum(ArticleStatus), default=ArticleStatus.draft)
     article_type = Column(Enum(ArticleType), nullable=False, default=ArticleType.original)
     responsible_user_id = Column(Integer, nullable=False)
+    assigned_editor_id = Column(Integer, nullable=True)
     antiplagiarism_file_url = Column(String, nullable=True)
     not_published_elsewhere = Column(Boolean, default=False)
     plagiarism_free = Column(Boolean, default=False)
@@ -124,6 +137,7 @@ class Article(Base):
     )
     authors = relationship("Author", secondary=article_authors, back_populates="articles")
     keywords = relationship("Keyword", secondary=article_keywords, back_populates="articles")
+    volumes = relationship("Volume", secondary=volume_articles, back_populates="articles")
 
 
 class ArticleVersion(Base):
@@ -170,3 +184,20 @@ class ArticleVersion(Base):
     )
     authors = relationship("Author", secondary=article_version_authors)
     keywords = relationship("Keyword", secondary=article_version_keywords)
+
+
+class Volume(Base):
+    __tablename__ = "volumes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    year = Column(Integer, nullable=False)
+    number = Column(Integer, nullable=False)  # Номер выпуска (issue)
+    month = Column(Integer, nullable=True)  # Месяц выпуска (1-12), опционально
+    title_kz = Column(String, nullable=True)
+    title_en = Column(String, nullable=True)
+    title_ru = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    published_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_active = Column(Boolean, default=True)
+
+    articles = relationship("Article", secondary=volume_articles, back_populates="volumes")

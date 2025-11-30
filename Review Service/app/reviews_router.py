@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from jose import jwt, JWTError
 from app import models, schemas, database, config
+import httpx
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -188,6 +189,19 @@ def update_review(review_id: int, review: schemas.ReviewUpdate, db: Session = De
         db_review.status = models.ReviewStatus.completed
     db.commit()
     db.refresh(db_review)
+    # Если отправлено, уведомляем Article Management Service
+    try:
+        if db_review.status == models.ReviewStatus.completed:
+            api_gateway = getattr(config, 'API_GATEWAY_URL', 'http://localhost:8000')
+            shared_secret = getattr(config, 'SHARED_SERVICE_SECRET', 'service-shared-secret')
+            with httpx.Client(timeout=5.0) as client:
+                client.patch(
+                    f"{api_gateway}/articles/internal/{db_review.article_id}/review-submitted",
+                    headers={"X-Service-Secret": shared_secret}
+                )
+    except Exception:
+        # Не блокируем ответ рецензенту, если межсервисный вызов не удался
+        pass
     return db_review
 
 

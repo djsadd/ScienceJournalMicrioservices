@@ -31,3 +31,7 @@ class EditorialTaskOut(EditorialTaskBase):
 
     class Config:
         orm_mode = True
+
+
+class ReassignEditorRequest(BaseModel):
+    new_editor_id: int
