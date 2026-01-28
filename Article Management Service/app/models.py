@@ -191,7 +191,7 @@ class Volume(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     year = Column(Integer, nullable=False)
-    number = Column(Integer, nullable=False)  # Номер выпуска (issue)
+    number = Column(String, nullable=False)  # Номер выпуска (issue) - может быть "1-2", "3" и т.д.
     month = Column(Integer, nullable=True)  # Месяц выпуска (1-12), опционально
     title_kz = Column(String, nullable=True)
     title_en = Column(String, nullable=True)

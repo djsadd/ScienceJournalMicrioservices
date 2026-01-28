@@ -220,7 +220,7 @@ class ArticleStatusUpdate(BaseModel):
 
 class VolumeBase(BaseModel):
     year: int
-    number: int
+    number: str
     month: int | None = Field(default=None, ge=1, le=12, description="Month number 1-12")
     title_kz: str | None = None
     title_en: str | None = None
@@ -235,7 +235,7 @@ class VolumeCreate(VolumeBase):
 
 class VolumeUpdate(BaseModel):
     year: int | None = None
-    number: int | None = None
+    number: str | None = None
     month: int | None = Field(default=None, ge=1, le=12)
     title_kz: str | None = None
     title_en: str | None = None

@@ -40,7 +40,7 @@ def list_volumes(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     year: int | None = None,
-    number: int | None = None,
+    number: str | None = None,
     month: int | None = None,
     active_only: bool = True,
 ):
